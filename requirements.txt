@@ -1,7 +1,5 @@
 discord.py>=2.3.0
 python-dotenv>=1.0.0
-folium>=0.15.0
-imgkit>=1.2.0
 shapely>=2.0.0
 geopandas>=0.13.0
 contextily>=1.2.0

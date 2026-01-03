@@ -2,7 +2,6 @@ import json
 import random
 import math
 import os
-import urllib.request
 from typing import Dict, List, Optional
 try:
     from shapely.geometry import shape, Point
