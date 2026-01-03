@@ -5,6 +5,10 @@ import time
 from typing import List, Dict, Optional
 
 import geopandas as gpd
+import matplotlib
+# Use a non-interactive backend to avoid GUI/Tk issues when generating
+# images from background threads (asyncio.to_thread).
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import contextily as ctx
 from shapely.geometry import shape
@@ -73,7 +77,7 @@ class MapGenerator:
             return True
 
         variations = {
-            'united states of america': ['united states', 'usa', 'us'],
+            'united states of america': ['united states', 'usa', 'us', 'america', 'u.s.a', 'u.s', 'u s a', 'u s'],
             'united kingdom': ['uk', 'great britain', 'britain'],
             'democratic republic of the congo': ['dr congo', 'drc', 'congo-kinshasa'],
             'republic of the congo': ['congo', 'congo-brazzaville'],
@@ -151,5 +155,61 @@ class MapGenerator:
 
         temp_png = os.path.join(tempfile.gettempdir(), f'globle_map_{int(time.time()*1000)}.png')
         fig.savefig(temp_png, bbox_inches='tight', dpi=150)
+        plt.close(fig)
+        return temp_png
+
+    def generate_quick_map(self, guesses: List[Dict], target_country: Dict, guess_count: int) -> str:
+        """Generate a low-resolution, fast PNG map for quick display.
+
+        This avoids adding basemap tiles and uses a smaller image size/dpi to keep
+        generation time under a couple seconds.
+        """
+        features = self.geojson_data.get('features', [])
+        if not features:
+            raise RuntimeError('No GeoJSON features available')
+
+        gdf = gpd.GeoDataFrame.from_features(features)
+        if gdf.geometry.isnull().any():
+            gdf['geometry'] = gdf['geometry'].apply(lambda g: shape(g) if isinstance(g, dict) else g)
+
+        # Use web mercator for consistent plotting
+        gdf = gdf.set_crs(epsg=4326, allow_override=True).to_crs(epsg=3857)
+
+        # Build guess lookup
+        guess_info = {}
+        for guess_data in guesses:
+            country_name = guess_data['country']['name']
+            distance = guess_data.get('distance', 0)
+            guess_info[country_name.lower()] = {
+                'color': self._get_color_from_distance(distance),
+                'distance': distance,
+                'label': self._get_temperature_label(distance),
+                'country': country_name,
+            }
+
+        # Default styles
+        gdf['style_color'] = '#E8E8E8'
+        gdf['alpha'] = 0.4
+        gdf['edgecolor'] = '#999999'
+        gdf['linewidth'] = 0.5
+
+        # Apply guessed styles (same matching as full generator)
+        for idx, row in gdf.iterrows():
+            name = row.get('properties', {}).get('name') if isinstance(row.get('properties'), dict) else row.get('name', '')
+            for guess_name, info in guess_info.items():
+                if self._match_country_name(name or row.get('name', ''), guess_name):
+                    gdf.at[idx, 'style_color'] = info['color']
+                    gdf.at[idx, 'alpha'] = 0.75
+                    gdf.at[idx, 'edgecolor'] = 'white'
+                    gdf.at[idx, 'linewidth'] = 1.5
+                    break
+
+        # Smaller/fast figure
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+        gdf.plot(ax=ax, color=gdf['style_color'], linewidth=gdf['linewidth'], edgecolor=gdf['edgecolor'], alpha=gdf['alpha'])
+        ax.axis('off')
+
+        temp_png = os.path.join(tempfile.gettempdir(), f'globle_map_quick_{int(time.time()*1000)}.png')
+        fig.savefig(temp_png, bbox_inches='tight', dpi=80)
         plt.close(fig)
         return temp_png

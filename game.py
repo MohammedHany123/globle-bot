@@ -127,6 +127,38 @@ class GlobleGame:
                     return None
         
         return None
+
+    def _normalize_country_name(self, name: str) -> str:
+        """Normalize country name and map common aliases to canonical names."""
+        if not name:
+            return ''
+        n = name.lower().strip()
+        # Remove common punctuation
+        n = n.replace('.', '').replace("'", '')
+
+        alias_map = {
+            'united states': 'united states of america',
+            'usa': 'united states of america',
+            'us': 'united states of america',
+            'america': 'united states of america',
+            'u s': 'united states of america',
+            'u s a': 'united states of america',
+            'uk': 'united kingdom',
+            'great britain': 'united kingdom',
+            'britain': 'united kingdom',
+            'dr congo': 'democratic republic of the congo',
+            'drc': 'democratic republic of the congo',
+            'congo-kinshasa': 'democratic republic of the congo',
+            'congo': 'republic of the congo',
+            'ivory coast': "côte d'ivoire",
+            'cote divoire': "côte d'ivoire",
+            'czechia': 'czech republic',
+            'south korea': 'republic of korea',
+            'north korea': "democratic people's republic of korea",
+            'russia': 'russian federation',
+        }
+
+        return alias_map.get(n, n)
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """
@@ -150,18 +182,19 @@ class GlobleGame:
     
     def _find_country(self, country_name: str) -> Optional[Dict]:
         """Find a country by name (case-insensitive)"""
-        country_name_lower = country_name.lower().strip()
-        
+        country_name_norm = self._normalize_country_name(country_name)
+
         for country in self.countries:
-            if country['name'].lower() == country_name_lower:
+            stored_norm = self._normalize_country_name(country.get('name', ''))
+            if stored_norm == country_name_norm:
                 return country
-        
+
         return None
     
     def _already_guessed(self, country_name: str) -> bool:
         """Check if a country has already been guessed"""
-        country_name_lower = country_name.lower().strip()
-        return any(guess['country']['name'].lower() == country_name_lower for guess in self.guesses)
+        country_norm = self._normalize_country_name(country_name)
+        return any(self._normalize_country_name(guess['country']['name']) == country_norm for guess in self.guesses)
     
     def _calculate_distance(self, guessed_country: Dict) -> float:
         """Calculate distance between guessed country and target using borders"""

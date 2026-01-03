@@ -79,10 +79,6 @@ async def start_game(interaction: discord.Interaction):
     """Start a new geography guessing game"""
     channel_id = interaction.channel.id
     
-    if channel_id in active_games:
-        await ctx.send("⚠️ A game is already in progress! Use /surrender to end it first.")
-        return
-    
     # Create new game
     game = GlobleGame()
     active_games[channel_id] = game
@@ -174,15 +170,41 @@ async def make_guess(interaction: discord.Interaction, country: str):
         color=color
     )
 
-    # Send quick feedback immediately
-    await interaction.response.send_message(embed=embed)
-
-    # Spawn background task to generate and send the map (non-blocking)
+    # Try to attach a quick, low-res map to the initial response within a short timeout.
+    # If quick generation fails or times out, fall back to sending feedback immediately
+    # and still spawn the full map generation in the background.
     if map_generator:
         try:
-            asyncio.create_task(_generate_and_send_map(channel_id, game, result['guess_count']))
+            # Attempt quick map generation in thread, limit to ~2 seconds
+            quick_png = await asyncio.wait_for(
+                asyncio.to_thread(map_generator.generate_quick_map, game.get_guesses_for_map(), game.target_country, result['guess_count']),
+                timeout=2.0
+            )
+
+            discord_file = discord.File(quick_png, filename='globle_map.png')
+            embed.set_image(url='attachment://globle_map.png')
+            await interaction.response.send_message(file=discord_file, embed=embed)
+
+            # cleanup quick image
+            try:
+                if quick_png and os.path.exists(quick_png):
+                    os.remove(quick_png)
+            except Exception:
+                pass
+
+            # Do NOT spawn full high-res map automatically here —
+            # only the quick map is sent after each guess. The full map
+            # will be sent only when a user invokes `/map`.
+
+        except asyncio.TimeoutError:
+            # Quick map timed out; send feedback now. Full map remains available via `/map`.
+            await interaction.response.send_message(embed=embed)
         except Exception as e:
-            print(f"Failed to spawn background map task: {e}")
+            print(f"Quick map generation failed: {e}")
+            # Quick map generation failed; send feedback now. Full map remains available via `/map`.
+            await interaction.response.send_message(embed=embed)
+    else:
+        await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name='hint', description='Get a hint about the target country')
 async def get_hint(interaction: discord.Interaction):
