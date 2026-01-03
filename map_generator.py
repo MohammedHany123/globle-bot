@@ -10,8 +10,15 @@ import matplotlib
 # images from background threads (asyncio.to_thread).
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import contextily as ctx
 from shapely.geometry import shape
+
+# Try to import contextily for basemap tiles (optional)
+try:
+    import contextily as ctx
+    CONTEXTILY_AVAILABLE = True
+except ImportError:
+    CONTEXTILY_AVAILABLE = False
+    print("Warning: contextily not available. Maps will render without basemap tiles.")
 
 
 class MapGenerator:
@@ -145,11 +152,12 @@ class MapGenerator:
         fig, ax = plt.subplots(1, 1, figsize=(14, 8))
         gdf.plot(ax=ax, color=gdf['style_color'], linewidth=gdf['linewidth'], edgecolor=gdf['edgecolor'], alpha=gdf['alpha'])
 
-        # Add basemap
-        try:
-            ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
-        except Exception as e:
-            print(f"Warning: failed to add basemap: {e}")
+        # Add basemap (only if contextily is available)
+        if CONTEXTILY_AVAILABLE:
+            try:
+                ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
+            except Exception as e:
+                print(f"Warning: failed to add basemap: {e}")
 
         ax.axis('off')
 
